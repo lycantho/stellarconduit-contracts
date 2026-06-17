@@ -62,8 +62,8 @@ pub struct Dispute {
     pub tx_id: BytesN<32>,
     /// Address that raised the dispute.
     pub initiator: Address,
-    /// Counter-party address; set when they respond.
-    pub respondent: Option<Address>,
+    /// Counter-party address.
+    pub respondent: Address,
     /// Proof from the initiator.
     pub initiator_proof: RelayChainProof,
     /// Counter-proof from the respondent; set on response.

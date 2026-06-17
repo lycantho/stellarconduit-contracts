@@ -231,7 +231,7 @@ fn test_full_settlement_flow() {
 	let init_proof = create_proof(&env, &initiator_sk, &chain_hash, 20);
 	let resp_proof = create_proof(&env, &respondent_sk, &chain_hash, 10);
 
-	let dispute_id = dispute_client.raise_dispute(&initiator, &tx_id, &init_proof);
+	let dispute_id = dispute_client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 	dispute_client.respond(&respondent, &dispute_id, &resp_proof);
 
 	// Resolve — respondent (carol) should win due to lower sequence

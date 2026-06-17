@@ -61,11 +61,16 @@ impl DisputeResolverContract {
     pub fn raise_dispute(
         env: Env,
         initiator: Address,
+        respondent: Address,
         tx_id: BytesN<32>,
         proof: RelayChainProof,
     ) -> Result<u64, ContractError> {
         storage::extend_instance_ttl(&env);
         initiator.require_auth();
+
+        if initiator == respondent {
+            return Err(ContractError::InvalidRespondent);
+        }
 
         // Guard against duplicate disputes for the same tx_id.
         if storage::get_dispute_by_tx(&env, &tx_id).is_some() {
@@ -83,7 +88,7 @@ impl DisputeResolverContract {
             dispute_id,
             tx_id: tx_id.clone(),
             initiator: initiator.clone(),
-            respondent: None,
+            respondent: respondent.clone(),
             initiator_proof: proof,
             respondent_proof: OptionalRelayChainProof::None,
             status: DisputeStatus::Open,
@@ -131,6 +136,10 @@ impl DisputeResolverContract {
         let mut dispute =
             storage::get_dispute(&env, dispute_id).ok_or(ContractError::DisputeNotFound)?;
 
+        if dispute.respondent != respondent {
+            return Err(ContractError::UnauthorizedRespondent);
+        }
+
         // Only Open disputes can receive a response.
         if dispute.status != DisputeStatus::Open {
             return Err(ContractError::NotOpen);
@@ -141,7 +150,6 @@ impl DisputeResolverContract {
             return Err(ContractError::ResolutionWindowExpired);
         }
 
-        dispute.respondent = Some(respondent.clone());
         dispute.respondent_proof = OptionalRelayChainProof::Some(proof);
         dispute.status = DisputeStatus::Responded;
 
@@ -196,7 +204,7 @@ impl DisputeResolverContract {
             let ruling = Ruling {
                 dispute_id,
                 winner: dispute.initiator.clone(),
-                loser: dispute.initiator.clone(), // no respondent; loser is a placeholder
+                loser: dispute.respondent.clone(),
                 reason: String::from_str(
                     &env,
                     "Respondent failed to respond within the resolution window",
@@ -221,10 +229,7 @@ impl DisputeResolverContract {
             return Err(ContractError::NotResponded);
         }
 
-        let respondent = dispute
-            .respondent
-            .clone()
-            .ok_or(ContractError::NotResponded)?;
+        let respondent = dispute.respondent.clone();
 
         let respondent_proof = match &dispute.respondent_proof {
             OptionalRelayChainProof::Some(p) => p.clone(),

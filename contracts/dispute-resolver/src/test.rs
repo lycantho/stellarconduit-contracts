@@ -77,7 +77,7 @@ fn test_resolve_both_valid_initiator_wins() {
 
     // Initiator proof: seq 10 (lower = better)
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent proof: seq 15
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
@@ -100,7 +100,7 @@ fn test_resolve_both_valid_respondent_wins() {
 
     // Initiator proof: seq 20
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 20);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent proof: seq 15 (lower = better)
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
@@ -123,7 +123,7 @@ fn test_resolve_initiator_valid_respondent_invalid() {
 
     // Initiator proof: valid signature
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 20);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent proof: invalid signature (bad bytes)
     let resp_proof = RelayChainProof {
@@ -153,7 +153,7 @@ fn test_resolve_both_invalid() {
         chain_hash: BytesN::from_array(&env, &chain_hash),
         sequence: 10,
     };
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent proof: invalid
     let resp_proof = RelayChainProof {
@@ -165,4 +165,18 @@ fn test_resolve_both_invalid() {
 
     let result = client.try_resolve(&dispute_id);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_raise_dispute_self_rejection() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, initiator, _, init_sk, _) = setup_dispute(&env);
+
+    let tx_id = BytesN::from_array(&env, &[9u8; 32]);
+    let chain_hash = [8u8; 32];
+    let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
+
+    let result = client.try_raise_dispute(&initiator, &initiator, &tx_id, &init_proof);
+    assert_eq!(result, Err(Ok(ContractError::InvalidRespondent)));
 }

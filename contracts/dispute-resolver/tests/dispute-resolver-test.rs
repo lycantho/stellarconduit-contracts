@@ -114,13 +114,13 @@ fn test_initialize_already_initialized() {
 #[test]
 fn test_raise_dispute_success() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
 
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
     assert_eq!(dispute_id, 1);
 
     let dispute = client.get_dispute(&dispute_id);
@@ -132,19 +132,19 @@ fn test_raise_dispute_success() {
 #[test]
 fn test_raise_dispute_auto_increment_id() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id1 = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
     let init_proof1 = create_proof(&env, &init_sk, &chain_hash, 10);
 
-    let dispute_id1 = client.raise_dispute(&initiator, &tx_id1, &init_proof1);
+    let dispute_id1 = client.raise_dispute(&initiator, &respondent, &tx_id1, &init_proof1);
     assert_eq!(dispute_id1, 1);
 
     let tx_id2 = BytesN::from_array(&env, &[10u8; 32]);
     let init_proof2 = create_proof(&env, &init_sk, &chain_hash, 11);
 
-    let dispute_id2 = client.raise_dispute(&initiator, &tx_id2, &init_proof2);
+    let dispute_id2 = client.raise_dispute(&initiator, &respondent, &tx_id2, &init_proof2);
     assert_eq!(dispute_id2, 2);
 }
 
@@ -152,16 +152,16 @@ fn test_raise_dispute_auto_increment_id() {
 #[should_panic(expected = "Error(Contract, #8)")] // DuplicateDispute
 fn test_raise_dispute_duplicate_tx_id() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
 
-    client.raise_dispute(&initiator, &tx_id, &init_proof);
+    client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Duplicate tx_id
-    client.raise_dispute(&initiator, &tx_id, &init_proof);
+    client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 }
 
 #[test]
@@ -181,14 +181,14 @@ fn test_raise_dispute_auth_required() {
     };
     client.initialize(&council, &100u32);
 
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
 
     // Will panic because require_auth() is not mocked
-    client.raise_dispute(&initiator, &tx_id, &init_proof);
+    client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 }
 
 // ── respond() tests ───────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ fn test_respond_success() {
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
     client.respond(&respondent, &dispute_id, &resp_proof);
@@ -212,7 +212,7 @@ fn test_respond_success() {
         dispute.status,
         dispute_resolver::types::DisputeStatus::Responded
     );
-    assert_eq!(dispute.respondent, Some(respondent));
+    assert_eq!(dispute.respondent, respondent);
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn test_respond_not_open() {
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
     client.respond(&respondent, &dispute_id, &resp_proof);
@@ -244,7 +244,7 @@ fn test_respond_window_expired() {
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Advance ledger sequence past the resolution window (100)
     env.ledger().with_mut(|l| l.sequence_number += 101);
@@ -277,7 +277,7 @@ fn test_resolve_initiator_wins_lower_sequence() {
 
     // Initiator seq = 10
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent seq = 15
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
@@ -298,7 +298,7 @@ fn test_resolve_respondent_wins_lower_sequence() {
 
     // Initiator seq = 20
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 20);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Respondent seq = 15
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
@@ -318,7 +318,7 @@ fn test_resolve_tie_initiator_wins() {
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 15);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
     client.respond(&respondent, &dispute_id, &resp_proof);
@@ -331,19 +331,41 @@ fn test_resolve_tie_initiator_wins() {
 #[test]
 fn test_resolve_no_response_expired() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Advance ledger sequence past the resolution window
     env.ledger().with_mut(|l| l.sequence_number += 101);
 
     let ruling = client.resolve(&dispute_id);
     assert_eq!(ruling.winner, initiator);
+    assert_eq!(ruling.loser, respondent);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #16)")] // UnauthorizedRespondent
+fn test_respond_unauthorized_respondent() {
+    let (env, client, _) = setup();
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
+    
+    // Create a third party
+    let unauthorized = Address::generate(&env);
+
+    let tx_id = BytesN::from_array(&env, &[9u8; 32]);
+    let chain_hash = [8u8; 32];
+
+    let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
+
+    let unauthorized_sk = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
+    let resp_proof = create_proof(&env, &unauthorized_sk, &chain_hash, 15);
+    
+    client.respond(&unauthorized, &dispute_id, &resp_proof);
 }
 
 #[test]
@@ -356,7 +378,7 @@ fn test_resolve_already_resolved() {
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     let resp_proof = create_proof(&env, &resp_sk, &chain_hash, 15);
     client.respond(&respondent, &dispute_id, &resp_proof);
@@ -369,13 +391,13 @@ fn test_resolve_already_resolved() {
 #[should_panic(expected = "Error(Contract, #12)")] // ResolutionWindowActive
 fn test_resolve_window_still_active() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Window is still active here, so it should panic as it's not Responded either
     client.resolve(&dispute_id);
@@ -386,13 +408,13 @@ fn test_resolve_window_still_active() {
 #[test]
 fn test_get_dispute_found() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     let dispute = client.get_dispute(&dispute_id);
     assert_eq!(dispute.dispute_id, dispute_id);
@@ -409,13 +431,13 @@ fn test_get_dispute_not_found() {
 #[test]
 fn test_get_ruling_after_resolve() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     env.ledger().with_mut(|l| l.sequence_number += 101);
 
@@ -430,13 +452,13 @@ fn test_get_ruling_after_resolve() {
 #[should_panic(expected = "Error(Contract, #1)")] // DisputeNotFound
 fn test_get_ruling_not_yet_resolved() {
     let (env, client, _) = setup();
-    let (initiator, _, init_sk, _) = setup_disputants(&env, &client);
+    let (initiator, respondent, init_sk, _) = setup_disputants(&env, &client);
 
     let tx_id = BytesN::from_array(&env, &[9u8; 32]);
     let chain_hash = [8u8; 32];
 
     let init_proof = create_proof(&env, &init_sk, &chain_hash, 10);
-    let dispute_id = client.raise_dispute(&initiator, &tx_id, &init_proof);
+    let dispute_id = client.raise_dispute(&initiator, &respondent, &tx_id, &init_proof);
 
     // Attempt to get ruling before resolution
     client.get_ruling(&dispute_id);
