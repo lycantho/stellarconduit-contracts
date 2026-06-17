@@ -435,11 +435,19 @@ impl RelayRegistryContract {
             return Err(ContractError::NodeSlashed);
         }
 
-        // Apply penalty: total loss of stake
-        let slashed_amount = node.stake;
+        // Apply penalty: total loss of active stake
+        let mut slashed_amount = node.stake;
         node.stake = 0;
         node.status = NodeStatus::Slashed;
         node.last_active = env.ledger().timestamp();
+
+        // Seize any pending unstake funds
+        if let Some(lock_entry) = storage::get_lock_entry(&env, &node_address) {
+            slashed_amount = slashed_amount
+                .checked_add(lock_entry.amount)
+                .ok_or(ContractError::Overflow)?;
+            storage::remove_lock_entry(&env, &node_address);
+        }
 
         // Warning: Local treasury target stub needed. Normally handled in separate PR but stubbing here.
         // Needs a valid storage variable or routing map to determine `treasury`
