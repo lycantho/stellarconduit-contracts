@@ -184,9 +184,18 @@ fn test_full_settlement_flow() {
 	// ----------------------
 	// Phase 4 — Fee Claiming
 	// ----------------------
+	let alice_balance_before = token_client.balance(&alice);
+	let fee_distributor_balance_before = token_client.balance(&fee_client.address);
+
 	// Alice claims
 	let payout = fee_client.claim(&alice);
 	assert_eq!(payout, 1);
+
+	let alice_balance_after = token_client.balance(&alice);
+	let fee_distributor_balance_after = token_client.balance(&fee_client.address);
+
+	assert_eq!(alice_balance_after, alice_balance_before + payout);
+	assert_eq!(fee_distributor_balance_after, fee_distributor_balance_before - payout);
 
 	let earnings_after = fee_client.get_earnings(&alice);
 	assert_eq!(earnings_after.unclaimed, 0);

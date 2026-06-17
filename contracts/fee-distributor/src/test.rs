@@ -260,7 +260,7 @@ fn test_distribute_treasury_share_split() {
 
 #[test]
 fn test_claim_success() {
-    let (env, client) = setup();
+    let (env, client, contract_id) = setup_with_token();
     let relay = Address::generate(&env);
     let batch_id = 1u64;
     let batch_size = 200u32;
@@ -271,11 +271,22 @@ fn test_claim_success() {
     let earnings_before = client.get_earnings(&relay);
     assert_eq!(earnings_before.unclaimed, 1);
 
+    let token_id = env.as_contract(&contract_id, || crate::storage::get_token_address(&env));
+    let token_client = token::Client::new(&env, &token_id);
+    let relay_balance_before = token_client.balance(&relay);
+    let contract_balance_before = token_client.balance(&contract_id);
+
     // Claim the fees
     let payout = client.claim(&relay);
 
     // Verify payout amount
     assert_eq!(payout, 1);
+
+    let relay_balance_after = token_client.balance(&relay);
+    let contract_balance_after = token_client.balance(&contract_id);
+
+    assert_eq!(relay_balance_after, relay_balance_before + payout);
+    assert_eq!(contract_balance_after, contract_balance_before - payout);
 
     // Verify unclaimed zeroed and total_claimed incremented
     let earnings_after = client.get_earnings(&relay);
@@ -297,7 +308,7 @@ fn test_claim_nothing_to_claim() {
 #[test]
 #[should_panic(expected = "HostError")]
 fn test_claim_auth_required() {
-    let (env, client) = setup();
+    let (env, client, _) = setup_with_token();
     let relay = Address::generate(&env);
     let batch_id = 1u64;
     let batch_size = 200u32;
@@ -313,6 +324,35 @@ fn test_claim_auth_required() {
 
     // This should panic because relay hasn't authorized
     client2.claim(&relay);
+}
+
+#[test]
+#[should_panic(expected = "HostError")]
+fn test_claim_insufficient_balance() {
+    let (env, client, contract_id) = setup_with_token();
+    let relay = Address::generate(&env);
+    let batch_id = 1u64;
+    let batch_size = 200u32;
+
+    // Distribute some fees
+    client.distribute(&relay, &batch_id, &batch_size);
+
+    let token_id = env.as_contract(&contract_id, || crate::storage::get_token_address(&env));
+    let token_client = token::Client::new(&env, &token_id);
+    let current_balance = token_client.balance(&contract_id);
+    // Burn all tokens from the contract using the token client itself?
+    // StellarAssetClient has no burn_from. Let's just create a new env or something.
+    // Wait, the fee distributor is initialized with 1,000,000 tokens.
+    // If we want to simulate insufficient balance, we can't easily burn if the token is SAC.
+    // Actually, `token::Client::new(&env, &token_id).transfer()` needs auth.
+    // We can just invoke token transfer from the contract id out of the contract using `env.as_contract`.
+    env.as_contract(&contract_id, || {
+        let t = token::Client::new(&env, &token_id);
+        t.transfer(&contract_id, &relay, &current_balance);
+    });
+
+    // Now balance is 0. Claiming should fail with HostError (SAC panics on insufficient balance).
+    client.claim(&relay);
 }
 
 // ============================================================================
@@ -497,8 +537,11 @@ fn test_multiple_distributions_different_relays() {
 
 #[test]
 fn test_multiple_claims() {
-    let (_env, client) = setup();
-    let relay = Address::generate(&_env);
+    let (env, client, contract_id) = setup_with_token();
+    let relay = Address::generate(&env);
+
+    let token_id = env.as_contract(&contract_id, || crate::storage::get_token_address(&env));
+    let token_client = token::Client::new(&env, &token_id);
 
     // Distribute, claim, distribute again, claim again
     client.distribute(&relay, &1u64, &200u32);
@@ -509,6 +552,9 @@ fn test_multiple_claims() {
     let payout2 = client.claim(&relay);
     assert_eq!(payout2, 5);
 
+    let relay_balance_after = token_client.balance(&relay);
+    assert_eq!(relay_balance_after, payout1 + payout2);
+
     let earnings = client.get_earnings(&relay);
     assert_eq!(earnings.total_earned, 6);
     assert_eq!(earnings.total_claimed, 6);
@@ -517,8 +563,11 @@ fn test_multiple_claims() {
 
 #[test]
 fn test_claim_after_multiple_distributions() {
-    let (_env, client) = setup();
-    let relay = Address::generate(&_env);
+    let (env, client, contract_id) = setup_with_token();
+    let relay = Address::generate(&env);
+
+    let token_id = env.as_contract(&contract_id, || crate::storage::get_token_address(&env));
+    let token_client = token::Client::new(&env, &token_id);
 
     // Distribute multiple times without claiming
     client.distribute(&relay, &1u64, &200u32); // 1
@@ -528,6 +577,9 @@ fn test_claim_after_multiple_distributions() {
     // Claim all at once
     let payout = client.claim(&relay);
     assert_eq!(payout, 6);
+
+    let relay_balance_after = token_client.balance(&relay);
+    assert_eq!(relay_balance_after, payout);
 
     let earnings = client.get_earnings(&relay);
     assert_eq!(earnings.total_earned, 6);
@@ -584,7 +636,7 @@ fn test_distribute_with_different_batch_sizes() {
 
 #[test]
 fn test_earnings_invariant_total_equals_claimed_plus_unclaimed() {
-    let (_env, client) = setup();
+    let (_env, client, _) = setup_with_token();
     let relay = Address::generate(&_env);
 
     // Distribute some fees
@@ -869,7 +921,7 @@ fn test_distribute_with_max_treasury_share() {
 
 #[test]
 fn test_claim_preserves_total_earned() {
-    let (_env, client) = setup();
+    let (_env, client, _) = setup_with_token();
     let relay = Address::generate(&_env);
 
     client.distribute(&relay, &1u64, &200u32);

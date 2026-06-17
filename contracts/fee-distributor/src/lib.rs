@@ -296,7 +296,11 @@ impl FeeDistributorContract {
             (relay_address.clone(), payout),
         );
 
-        // TODO: SAC transfer payout to relay_address
+        let token_addr = storage::get_token_address(&env);
+        let token_client = token::Client::new(&env, &token_addr);
+
+        token_client.transfer(&env.current_contract_address(), &relay_address, &payout);
+
         Ok(payout)
     }
 
